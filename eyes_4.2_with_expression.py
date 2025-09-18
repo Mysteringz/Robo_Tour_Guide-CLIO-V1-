@@ -11,21 +11,26 @@ class Eye:
     def __init__(self, canvas, eye_index):
         self.canvas = canvas
         self.eye_index = eye_index
+
+        # Eye components
         self.eye_shape = None
         self.pupil = None
+        self.top_lid = None
+        self.bottom_lid = None
 
+        # Sizes
         self.eye_radius = 0
         self.pupil_radius = 0
         self.pupil_move_radius = 0
         self.eye_size = 0
 
-        # Eye position
+        # Position
         self.base_center_x = 0
         self.base_center_y = 0
         self.center_x = 0
         self.center_y = 0
 
-        # Target offsets (whole eye movement)
+        # Outer-eye offsets
         self.target_ex = 0
         self.target_ey = 0
         self.current_ex = 0
@@ -38,37 +43,51 @@ class Eye:
         self.current_dy = 0
 
         # Eyelid
-        self.eyelid_position = 0.0  # 0=open, 1=closed
-        self.top_lid = None
-        self.bottom_lid = None
+        self.eyelid_position = 0.0  # blinking
+        self._current_eyelid_position = 0.0  # actual used for drawing
         self.blinking = False
+
+        # Expression
+        self.expression = "neutral"
+
+    def set_expression(self, expr):
+        self.expression = expr
+        self._redraw_eye()
+
+    def _apply_expression_style(self):
+        """Return eye color, pupil color, expression eyelid"""
+        if self.expression == "angry":
+            return "#FF4444", "#AA0000", 0.3
+        elif self.expression == "happy":
+            return "#44FF44", "#008800", 0.0
+        elif self.expression == "sad":
+            return "#4444FF", "#000088", 0.5
+        else:  # neutral
+            return "#00B9B9", "#00CCCC", 0.0
 
     def draw(self, center_x, center_y, eye_size):
         """Initialize base eye position"""
         self.base_center_x = center_x
         self.base_center_y = center_y
         self.eye_radius = eye_size // 2
-        self.pupil_radius = eye_size // 10
+        self.pupil_radius = int(self.eye_radius * 0.4)
         self.pupil_move_radius = self.eye_radius - self.pupil_radius
         self.eye_size = eye_size
         self._redraw_eye()
 
     def _redraw_eye(self):
-        """Draw eye + pupil at current position"""
-        if self.eye_shape:
-            self.canvas.delete(self.eye_shape)
-        if self.pupil:
-            self.canvas.delete(self.pupil)
-        if self.top_lid:
-            self.canvas.delete(self.top_lid)
-        if self.bottom_lid:
-            self.canvas.delete(self.bottom_lid)
+        """Draw eye + pupil + eyelids at current position"""
+        # Delete old shapes
+        for item in (self.eye_shape, self.pupil, self.top_lid, self.bottom_lid):
+            if item:
+                self.canvas.delete(item)
 
         self.center_x = self.base_center_x + self.current_ex
         self.center_y = self.base_center_y + self.current_ey
 
-        corner_radius = self.eye_radius * 0.5
-        pupil_size = self.eye_radius * 1.8
+        # Expression style
+        eye_color, pupil_color, expr_eyelid = self._apply_expression_style()
+        self._current_eyelid_position = max(expr_eyelid, self.eyelid_position)
 
         # Outer eye
         self.eye_shape = self._create_rounded_rect(
@@ -76,23 +95,28 @@ class Eye:
             self.center_y - self.eye_radius,
             self.center_x + self.eye_radius,
             self.center_y + self.eye_radius,
-            corner_radius * 0.7, fill="#00B9B9", outline=''
+            self.eye_radius * 0.5,
+            fill=eye_color,
+            outline=""
         )
 
         # Pupil
+        pupil_size = self.pupil_radius * 2
         self.pupil = self._create_rounded_rect(
-            self.center_x - pupil_size / 2,
-            self.center_y - pupil_size / 2,
-            self.center_x + pupil_size / 2,
-            self.center_y + pupil_size / 2,
-            corner_radius * 1, fill='#00CCCC', outline=''
+            self.center_x - self.pupil_radius + self.current_dx,
+            self.center_y - self.pupil_radius + self.current_dy,
+            self.center_x + self.pupil_radius + self.current_dx,
+            self.center_y + self.pupil_radius + self.current_dy,
+            self.pupil_radius,
+            fill=pupil_color,
+            outline=""
         )
 
-        # Redraw eyelids if blinking
-        if self.blinking or self.eyelid_position > 0:
+        # Eyelids
+        if self._current_eyelid_position > 0:
             self._draw_eyelids()
 
-    def _create_rounded_rect(self, x1, y1, x2, y2, r=60, **kwargs):
+    def _create_rounded_rect(self, x1, y1, x2, y2, r=10, **kwargs):
         points = [
             x1 + r, y1, x2 - r, y1, x2, y1 + r,
             x2, y2 - r, x2 - r, y2, x1 + r, y2,
@@ -103,76 +127,41 @@ class Eye:
     def update_position(self):
         """Smoothly update both eye offset and pupil"""
         step = 0.15
-
-        # Smooth outer-eye movement
         self.current_ex += (self.target_ex - self.current_ex) * step
         self.current_ey += (self.target_ey - self.current_ey) * step
-
-        # Smooth pupil movement
         self.current_dx += (self.target_dx - self.current_dx) * step
         self.current_dy += (self.target_dy - self.current_dy) * step
-
-        # Redraw
         self._redraw_eye()
 
-        # Move pupil relative to new center
-        corner_radius = self.eye_radius * 0.5
-        pupil_size = self.eye_radius * 1.8
-        points = [
-            self.center_x - pupil_size / 2 + self.current_dx + corner_radius * 0.5, self.center_y - pupil_size / 2 + self.current_dy,
-            self.center_x + pupil_size / 2 + self.current_dx - corner_radius * 0.5, self.center_y - pupil_size / 2 + self.current_dy,
-            self.center_x + pupil_size / 2 + self.current_dx, self.center_y - pupil_size / 2 + self.current_dy + corner_radius * 0.5,
-            self.center_x + pupil_size / 2 + self.current_dx, self.center_y + pupil_size / 2 + self.current_dy - corner_radius * 0.5,
-            self.center_x + pupil_size / 2 + self.current_dx - corner_radius * 0.5, self.center_y + pupil_size / 2 + self.current_dy,
-            self.center_x - pupil_size / 2 + self.current_dx + corner_radius * 0.5, self.center_y + pupil_size / 2 + self.current_dy,
-            self.center_x - pupil_size / 2 + self.current_dx, self.center_y + pupil_size / 2 + self.current_dy - corner_radius * 0.5,
-            self.center_x - pupil_size / 2 + self.current_dx, self.center_y - pupil_size / 2 + self.current_dy + corner_radius * 0.5
-        ]
-        self.canvas.coords(self.pupil, *points)
-
-        # Update eyelids
-        if self.blinking or self.eyelid_position > 0:
-            self._draw_eyelids()
-
     def look_at_3d_point(self, x, y, z):
-        """Set pupil target with exponential scaling"""
         if z == 0:
             z = 0.01
         proj_x = x / z
         proj_y = y / z
-
-        # Linear target
         dx = max(-1, min(1, proj_x)) * self.pupil_move_radius
         dy = max(-1, min(1, proj_y)) * self.pupil_move_radius
-
-        # Exponential scaling
         scale_x = (1 - np.exp(-abs(dx) / self.pupil_move_radius))
         scale_y = (1 - np.exp(-abs(dy) / self.pupil_move_radius))
-
         self.target_dx = dx * scale_x
         self.target_dy = dy * scale_y
 
     def set_eye_offset(self, dx, dy):
-        """Set whole-eye offset target"""
-        self.target_ex = dx * 80   # scaling factor for face tracking
+        """Whole-eye movement offset"""
+        self.target_ex = dx * 80
         self.target_ey = dy * 25
 
     # ---- Eyelids ----
     def _draw_eyelids(self):
-        if self.top_lid:
-            self.canvas.delete(self.top_lid)
-        if self.bottom_lid:
-            self.canvas.delete(self.bottom_lid)
+        lid_height = int(self.eye_radius * self._current_eyelid_position)
 
-        lid_height = int(self.eye_radius * self.eyelid_position)
-
-        # Top lid (slides down)
+        # Top lid
         self.top_lid = self.canvas.create_rectangle(
             self.center_x - self.eye_radius, self.center_y - self.eye_radius,
             self.center_x + self.eye_radius, self.center_y - self.eye_radius + lid_height,
             fill="black", outline=""
         )
-        # Bottom lid (slides up)
+
+        # Bottom lid
         self.bottom_lid = self.canvas.create_rectangle(
             self.center_x - self.eye_radius, self.center_y + self.eye_radius - lid_height,
             self.center_x + self.eye_radius, self.center_y + self.eye_radius,
@@ -183,12 +172,12 @@ class Eye:
         step = 0.5
         self.eyelid_position += direction * step
         self.eyelid_position = max(0.0, min(1.0, self.eyelid_position))
-        self._draw_eyelids()
+        self._redraw_eye()
         if direction == 1 and self.eyelid_position < 1.0:
             self.canvas.after(30, lambda: self._animate_blink(1))
         elif direction == -1 and self.eyelid_position > 0.0:
             self.canvas.after(30, lambda: self._animate_blink(-1))
-        elif direction == 1:  # Fully closed
+        elif direction == 1:
             self.canvas.after(100, lambda: self._animate_blink(-1))
         else:
             self.blinking = False
@@ -202,18 +191,21 @@ class Eye:
 
 # ---- GUI ----
 root = tk.Tk()
-root.overrideredirect(True)
 root.title("3D Gaze Robot Eyes with Face Tracking")
 root.geometry("1280x400")
-root.attributes('-fullscreen', True)
 
 notebook = ttk.Notebook(root)
 notebook.pack(fill=tk.BOTH, expand=True)
 
 # Eye Animation Tab
-eye_frame = tk.Frame(notebook)
+eye_frame = tk.Frame(notebook, bg="black")
+eye_frame.pack(fill=tk.BOTH, expand=True)
+
+# Put canvas + control frame into eye_frame
 canvas = tk.Canvas(eye_frame, width=1280, height=400, bg='black')
 canvas.pack(fill=tk.BOTH, expand=True)
+
+
 notebook.add(eye_frame, text="Robot Eyes")
 
 # Face Tracking Tab
@@ -281,7 +273,7 @@ def face_tracking_loop():
             dx = -(face_center_x - frame_center_x) / frame_center_x + 2
             dy = (face_center_y - frame_center_y) / frame_center_y - 1
             dz = 5
-
+            print(f"at location ({dx}, {dy}, {dz})")
             look_at_person(dx, dy, dz)
             for eye in eyes:
                 eye.set_eye_offset(dx, dy)
@@ -305,6 +297,40 @@ def face_tracking_loop():
         video_label.configure(image=imgtk)
 
         time.sleep(0.03)
+
+# ---- Key Bindings + Onscreen Buttons for Expressions ----
+def set_expression_all(expr):
+    for eye in eyes:
+        eye.set_expression(expr)
+
+# Bind keys
+for widget in (root, canvas):
+    widget.bind("1", lambda e: set_expression_all("angry"))
+    widget.bind("2", lambda e: set_expression_all("happy"))
+    widget.bind("3", lambda e: set_expression_all("sad"))
+    widget.bind("0", lambda e: set_expression_all("neutral"))
+
+canvas.focus_set()
+
+# ---- Onscreen Buttons ----
+control_frame = tk.Frame(eye_frame, bg="black")
+control_frame.pack(side=tk.BOTTOM, pady=10)
+
+btn_angry = tk.Button(control_frame, text="Angry", width=10,
+                      command=lambda: set_expression_all("angry"))
+btn_angry.pack(side=tk.LEFT, padx=5)
+
+btn_happy = tk.Button(control_frame, text="Happy", width=10,
+                      command=lambda: set_expression_all("happy"))
+btn_happy.pack(side=tk.LEFT, padx=5)
+
+btn_sad = tk.Button(control_frame, text="Sad", width=10,
+                    command=lambda: set_expression_all("sad"))
+btn_sad.pack(side=tk.LEFT, padx=5)
+
+btn_neutral = tk.Button(control_frame, text="Neutral", width=10,
+                        command=lambda: set_expression_all("neutral"))
+btn_neutral.pack(side=tk.LEFT, padx=5)
 
 # ---- Start ----
 update_animation()

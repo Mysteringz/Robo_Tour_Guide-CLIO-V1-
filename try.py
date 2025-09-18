@@ -1,3 +1,6 @@
+import rclpy
+from rclpy.node import Node
+from std_msgs.msg import String
 import tkinter as tk
 from tkinter import ttk
 from PIL import Image, ImageTk
@@ -257,12 +260,15 @@ def random_blink_loop():
         root.after(delay, blink)
     blink()
 
-def face_tracking_loop():
-    cap = cv2.VideoCapture(0)
+def main(args=None):
+    while rclpy.ok():
+        if not ros_interrupt:
+            cap = cv2.VideoCapture(0)
     face_cascade = cv2.CascadeClassifier(cv2.data.haarcascades + "haarcascade_frontalface_default.xml")
     frame_center_x = 640 / 2
     frame_center_y = 480 / 2
     dx, dy, dz = 0, 0, 2
+    ros_node = FaceNode()
 
     while True:
         ret, frame = cap.read()
@@ -271,17 +277,7 @@ def face_tracking_loop():
         gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
         faces = face_cascade.detectMultiScale(gray, 1.3, 5)
 
-        if len(faces) > 0:
-            x, y, w, h = faces[0]
-            face_center_x = x + w / 2
-            face_center_y = y + h / 2
-            cv2.rectangle(frame, (x, y), (x + w, y + h), (0, 255, 0), 2)
-            cv2.circle(frame, (int(face_center_x), int(face_center_y)), 5, (0, 0, 255), -1)
-
-            dx = -(face_center_x - frame_center_x) / frame_center_x + 2
-            dy = (face_center_y - frame_center_y) / frame_center_y - 1
-            dz = 5
-
+        if ros_node.is_alive(timeout=2.0):
             look_at_person(dx, dy, dz)
             for eye in eyes:
                 eye.set_eye_offset(dx, dy)
